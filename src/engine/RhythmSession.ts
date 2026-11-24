@@ -40,6 +40,7 @@ class AudioTransport {
   private master: GainNode;
   private scheduled: Set<AudioScheduledSourceNode> = new Set();
   private startAt = 0;
+  private trackDuration = 0;
   private disposed = false;
   private audioBuffers = new Map<string, AudioBuffer>();
 
@@ -55,6 +56,8 @@ class AudioTransport {
   get time() {
     return this.context.currentTime - this.startAt;
   }
+
+  get duration() { return this.trackDuration; }
 
   private async loadTrack(src: string) {
     const cached = this.audioBuffers.get(src);
@@ -74,12 +77,14 @@ class AudioTransport {
     const trackBuffer = song.audioSrc ? await this.loadTrack(song.audioSrc) : null;
     this.startAt = this.context.currentTime + 0.38;
     if (trackBuffer) {
+      this.trackDuration = trackBuffer.duration;
       const source = this.context.createBufferSource();
       source.buffer = trackBuffer;
       source.connect(this.master);
       this.track(source);
-      // audioLeadIn positions the first detected beat on the chart's 1.4 s beat-zero.
-      source.start(this.startAt + (song.audioLeadIn ?? 1.4));
+      // The decoded MP3 and chart use the same clock origin. audioLeadIn is
+      // the first musical beat inside the file, not a second playback delay.
+      source.start(this.startAt);
     } else {
       // Procedural original demo tracks continue to use the Web Audio timeline.
       this.scheduleMusic(song, this.startAt + 1.4);
@@ -216,6 +221,7 @@ export class RhythmSession {
   private transport: AudioTransport;
   private notes: RuntimeNote[];
   private laneCount: number;
+  private chartStart: number;
   private duration: number;
   private maxJudgements: number;
   private raf = 0;
@@ -249,11 +255,12 @@ export class RhythmSession {
     this.song = song;
     this.difficulty = difficulty;
     this.options = options;
-    const chart = generateChart(song, difficulty);
+    this.chartStart = song.audioSrc ? (song.audioLeadIn ?? 0) : 1.4;
+    const chart = generateChart(song, difficulty, this.chartStart);
     this.notes = chart.notes.map((note) => ({ ...note, started: false, done: false }));
     this.laneCount = chart.laneCount;
     this.lanePulseUntil = Array.from({ length: this.laneCount }, () => 0);
-    this.duration = song.audioSrc ? (song.audioLeadIn ?? 0) + song.duration : chart.duration;
+    this.duration = song.audioSrc ? song.duration : chart.duration;
     this.maxJudgements = chart.maxJudgements;
     this.transport = new AudioTransport(options.volume);
     this.stats = { score: 0, combo: 0, maxCombo: 0, accuracy: 100, life: 100, perfect: 0, great: 0, good: 0, bad: 0, miss: 0, judged: 0, total: this.maxJudgements, lastJudge: null };
@@ -278,6 +285,7 @@ export class RhythmSession {
     if (this.started) return;
     this.started = true;
     await this.transport.play(this.song);
+    if (this.song.audioSrc && this.transport.duration > 0) this.duration = this.transport.duration;
     this.loop();
   }
 
@@ -310,8 +318,11 @@ export class RhythmSession {
   }
 
   private roadHalfWidthAt(y: number) {
-    const progress = Math.max(0, Math.min(1, y / Math.max(1, this.height)));
-    return this.width * (0.018 + 0.482 * progress);
+    // The stage may have depth, but the input field must not.  Keeping every
+    // lane the same width prevents notes from scaling while travelling and
+    // makes touch targets identical from top to judgement line.
+    void y;
+    return Math.min(this.width * 0.46, 360);
   }
 
   private laneBoundaryX(boundary: number, y: number) {
@@ -365,9 +376,10 @@ export class RhythmSession {
       this.trailEffects.push({ x: localX, y: localY, until: this.songTime() + 0.2, color: '#ff9dce' });
       if (this.trailEffects.length > 36) this.trailEffects.shift();
     }
+    const isUpwardFlick = dy < -18 && Math.abs(dy) > Math.abs(dx) * 0.75;
     if (Math.abs(dx) > 18 || Math.abs(dy) > 18) {
       const time = this.songTime();
-      const nearest = this.notes.find((note) => !note.done && !note.started && note.type === 'flick' && (note.lane === lane || note.lane === this.laneAt(origin.x, origin.y)) && Math.abs(time - note.time - this.options.timingOffset / 1000) <= 0.22);
+      const nearest = isUpwardFlick ? this.notes.find((note) => !note.done && !note.started && note.type === 'flick' && (note.lane === lane || note.lane === this.laneAt(origin.x, origin.y)) && Math.abs(time - note.time - this.options.timingOffset / 1000) <= 0.22) : undefined;
       if (nearest) {
         this.hitNote(nearest, this.gradeFor(time - nearest.time - this.options.timingOffset / 1000));
         this.addInputFeedback(nearest.lane, localX, localY, 'flick');
@@ -390,7 +402,7 @@ export class RhythmSession {
     if (lane === undefined || lane >= this.laneCount) return;
     event.preventDefault();
     this.keyLanes.add(lane);
-    this.addInputFeedback(lane, this.laneCenter(lane), this.height * 0.765, 'key');
+    this.addInputFeedback(lane, this.laneCenter(lane), this.height * 0.81, 'key');
     this.pressLane(lane, true);
   }
 
@@ -422,15 +434,15 @@ export class RhythmSession {
       note.started = true;
       note.startGrade = grade;
       note.effectUntil = this.songTime() + 0.22;
-      this.addInputFeedback(note.lane, this.laneCenter(note.lane), this.height * 0.765, 'touch');
+      this.addInputFeedback(note.lane, this.laneCenter(note.lane), this.height * 0.81, 'touch');
       return;
     }
     note.done = true;
     note.effectUntil = this.songTime() + 0.3;
     this.record(grade);
     const laneX = this.laneCenter(note.lane);
-    this.particles.push({ x: laneX, y: this.height * 0.765, until: this.songTime() + 0.42, color: grade === 'PERFECT' ? '#fff4b8' : '#80e8ff' });
-    this.addInputFeedback(note.lane, laneX, this.height * 0.765, note.type === 'flick' ? 'flick' : 'touch');
+    this.particles.push({ x: laneX, y: this.height * 0.81, until: this.songTime() + 0.42, color: grade === 'PERFECT' ? '#fff4b8' : '#80e8ff' });
+    this.addInputFeedback(note.lane, laneX, this.height * 0.81, note.type === 'flick' ? 'flick' : 'touch');
   }
 
   private gradeFor(delta: number): Judge {
@@ -466,7 +478,7 @@ export class RhythmSession {
   }
 
   private laneCenter(lane: number) {
-    const targetY = this.height * 0.765;
+    const targetY = this.height * 0.81;
     return (this.laneBoundaryX(lane, targetY) + this.laneBoundaryX(lane + 1, targetY)) / 2;
   }
 
@@ -482,8 +494,8 @@ export class RhythmSession {
           const grade = held ? (note.startGrade || 'GOOD') : 'MISS';
           this.record(grade);
           note.effectUntil = time + 0.25;
-          this.particles.push({ x: this.laneCenter(targetLane), y: this.height * 0.765, until: time + 0.42, color: held ? '#83f1c4' : '#ff758f' });
-          this.addInputFeedback(targetLane, this.laneCenter(targetLane), this.height * 0.765, held ? 'touch' : 'flick');
+          this.particles.push({ x: this.laneCenter(targetLane), y: this.height * 0.81, until: time + 0.42, color: held ? '#83f1c4' : '#ff758f' });
+          this.addInputFeedback(targetLane, this.laneCenter(targetLane), this.height * 0.81, held ? 'touch' : 'flick');
         }
       } else if (!note.started && time > note.time + offset + 0.205) {
         note.done = true;
@@ -568,50 +580,11 @@ export class RhythmSession {
       ctx.fill();
     }
 
-    // Translucent album windows on the sides echo the reference stage backdrop.
-    const drawPoster = (x: number, y: number, w: number, h: number, rotation: number, tint: string, label: string) => {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(rotation);
-      ctx.globalAlpha = 0.35;
-      ctx.shadowColor = tint;
-      ctx.shadowBlur = 23;
-      ctx.fillStyle = 'rgba(20,24,57,.9)';
-      ctx.strokeStyle = 'rgba(211,224,255,.52)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(-w / 2, -h / 2, w, h, 12);
-      ctx.fill();
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      const art = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
-      art.addColorStop(0, tint);
-      art.addColorStop(1, 'rgba(40,65,120,.15)');
-      ctx.fillStyle = art;
-      ctx.fillRect(-w / 2 + 6, -h / 2 + 6, w - 12, h - 12);
-      ctx.strokeStyle = 'rgba(255,255,255,.38)';
-      ctx.lineWidth = 1;
-      for (let stripe = 0; stripe < 5; stripe += 1) {
-        ctx.beginPath();
-        ctx.moveTo(-w * 0.42, -h * 0.25 + stripe * h * 0.12);
-        ctx.lineTo(w * 0.42, -h * 0.25 + stripe * h * 0.12);
-        ctx.stroke();
-      }
-      ctx.fillStyle = 'rgba(255,255,255,.72)';
-      ctx.font = `900 ${Math.max(9, w * 0.075)}px sans-serif`;
-      ctx.fillText(label, -w * 0.39, h * 0.36);
-      ctx.restore();
-    };
-    drawPoster(width * 0.19, height * 0.31, width * 0.18, height * 0.25, -0.07, '#e56ab4', 'MORANO LIVE');
-    drawPoster(width * 0.76, height * 0.2, width * 0.15, height * 0.2, 0.08, '#56b8e5', 'DINO BEAT');
-    drawPoster(width * 0.56, height * 0.22, width * 0.24, height * 0.34, 0.01, '#77d3ca', 'STAGE 01');
-    drawPoster(width * 0.37, height * 0.68, width * 0.2, height * 0.22, -0.04, '#ac81df', 'LIVE');
-
-    // Light beams converge toward the vanishing point.
+    // Keep the scenery behind the playable field dark and quiet for contrast.
     for (let beam = 0; beam < 7; beam += 1) {
       const originX = width * (0.04 + beam * 0.15);
       ctx.save();
-      ctx.globalAlpha = 0.08 + (beam % 3) * 0.025;
+      ctx.globalAlpha = 0.025 + (beam % 3) * 0.008;
       ctx.strokeStyle = beam % 2 ? '#65dbe5' : '#ff91d1';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
@@ -621,8 +594,8 @@ export class RhythmSession {
       ctx.restore();
     }
 
-    const targetY = height * 0.765;
-    const roadTopY = height * 0.025;
+    const targetY = height * 0.81;
+    const roadTopY = height * 0.155;
     const roadBottomY = height * 1.03;
     const topHalf = this.roadHalfWidthAt(roadTopY);
     const bottomHalf = this.roadHalfWidthAt(height);
@@ -639,9 +612,10 @@ export class RhythmSession {
     ctx.fillStyle = road;
     ctx.fill();
 
-    // Each lane is a trapezoid: narrow at the horizon and broad at the hit line.
+    // Six fixed-width lanes. Background depth is decorative only; gameplay
+    // geometry never uses perspective or scale transforms.
     for (let lane = 0; lane < this.laneCount; lane += 1) {
-      const color = lane % 2 === 0 ? 'rgba(84,184,228,.10)' : 'rgba(220,104,192,.09)';
+      const color = lane % 2 === 0 ? 'rgba(66,183,220,.12)' : 'rgba(176,105,220,.105)';
       ctx.beginPath();
       ctx.moveTo(this.laneBoundaryX(lane, roadTopY), roadTopY);
       ctx.lineTo(this.laneBoundaryX(lane + 1, roadTopY), roadTopY);
@@ -652,23 +626,23 @@ export class RhythmSession {
       ctx.fill();
     }
 
-    // Perspective rails and the scrolling beat grid.
+    // Fixed lane rails and a time-based beat grid.
     ctx.save();
     for (let boundary = 0; boundary <= this.laneCount; boundary += 1) {
       ctx.beginPath();
       ctx.moveTo(this.laneBoundaryX(boundary, roadTopY), roadTopY);
       ctx.lineTo(this.laneBoundaryX(boundary, roadBottomY), roadBottomY);
-      ctx.strokeStyle = boundary === 0 || boundary === this.laneCount ? 'rgba(220,226,255,.5)' : 'rgba(203,215,255,.23)';
-      ctx.lineWidth = boundary === 0 || boundary === this.laneCount ? 2 : 1;
+      ctx.strokeStyle = boundary === 0 || boundary === this.laneCount ? 'rgba(220,226,255,.68)' : 'rgba(203,215,255,.38)';
+      ctx.lineWidth = boundary === 0 || boundary === this.laneCount ? 2 : 1.25;
       ctx.stroke();
     }
     const beatDuration = 60 / this.song.bpm;
     const pixelsPerSecond = Math.max(250, height * 0.48) * this.options.noteSpeed;
     const yForTime = (noteTime: number) => targetY - (noteTime - time) * pixelsPerSecond;
     if (this.options.laneGuide) {
-      const firstBeat = Math.floor((time - 1.4) / (beatDuration / 2));
+      const firstBeat = Math.floor((time - this.chartStart) / (beatDuration / 2));
       for (let beatIndex = firstBeat; beatIndex < firstBeat + 28; beatIndex += 1) {
-        const beatTime = 1.4 + beatIndex * (beatDuration / 2);
+        const beatTime = this.chartStart + beatIndex * (beatDuration / 2);
         const y = yForTime(beatTime);
         if (y < roadTopY || y > roadBottomY) continue;
         ctx.beginPath();
@@ -684,7 +658,7 @@ export class RhythmSession {
     }
     ctx.restore();
 
-    // Long notes are a solid full-lane ribbon with both ends in the same lane.
+    // Long notes are a solid fixed-width ribbon with both ends in the same lane.
     for (const note of this.notes) {
       if (note.done || note.type !== 'hold' || note.endTime === undefined) continue;
       const headY = note.started ? targetY : yForTime(note.time);
@@ -734,7 +708,7 @@ export class RhythmSession {
     ctx.shadowColor = '#e68dff';
     ctx.shadowBlur = 24;
     ctx.strokeStyle = 'rgba(255,255,255,.24)';
-    ctx.lineWidth = 16;
+    ctx.lineWidth = 10;
     ctx.beginPath();
     ctx.moveTo(hitLeft, targetY);
     ctx.lineTo(hitRight, targetY);
@@ -751,7 +725,19 @@ export class RhythmSession {
     ctx.stroke();
     ctx.restore();
 
-    // Standard notes and flicks occupy the entire width of their perspective lane.
+    // Keyboard guide is attached to the judgement edge, never mixed into HUD.
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `800 ${Math.max(9, Math.min(13, width / 75))}px ui-monospace, monospace`;
+    for (let lane = 0; lane < this.laneCount; lane += 1) {
+      const center = this.laneCenter(lane);
+      ctx.fillStyle = 'rgba(230,237,255,.5)';
+      ctx.fillText(['S', 'D', 'F', 'J', 'K', 'L'][lane], center, Math.min(height - 14, targetY + 30));
+    }
+    ctx.restore();
+
+    // Standard notes and flicks occupy the full fixed width of their lane.
     for (const note of this.notes) {
       if (note.type === 'hold' || (note.done && (!note.effectUntil || note.effectUntil < time))) continue;
       const y = yForTime(note.time);
@@ -789,17 +775,19 @@ export class RhythmSession {
       ctx.stroke();
       if (flick) {
         const center = this.laneCenter(note.lane);
+        const iconSize = Math.max(14, Math.min(24, (rightBottom - leftBottom) * 0.23));
         ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#65314f';
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#fff7fc';
+        ctx.lineWidth = Math.max(2.5, iconSize * 0.16);
         ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(center, y + 7);
-        ctx.lineTo(center, y - 6);
-        ctx.moveTo(center - 6, y);
-        ctx.lineTo(center, y - 7);
-        ctx.lineTo(center + 6, y);
-        ctx.stroke();
+        ctx.lineJoin = 'round';
+        for (const offset of [iconSize * 0.22, -iconSize * 0.2]) {
+          ctx.beginPath();
+          ctx.moveTo(center - iconSize * 0.42, y + offset + iconSize * 0.18);
+          ctx.lineTo(center, y + offset - iconSize * 0.26);
+          ctx.lineTo(center + iconSize * 0.42, y + offset + iconSize * 0.18);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }

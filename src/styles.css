@@ -1082,7 +1082,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   left: clamp(10px, 2.6vw, 34px);
   right: clamp(10px, 2.6vw, 34px);
   display: grid;
-  grid-template-columns: minmax(230px, 1fr) minmax(120px, .72fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(230px, 1fr) auto;
   align-items: start;
   gap: clamp(8px, 2vw, 25px);
   pointer-events: none;
@@ -1122,7 +1122,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .live-score-track::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0, transparent 24.5%, rgba(255,255,255,.38) 24.7%, transparent 25%); pointer-events: none; }
 .live-score-track i { display: block; height: 100%; max-width: 100%; border-radius: inherit; background: linear-gradient(90deg, #60e7ce, #8cf1d9 60%, #5ac6ec); box-shadow: 0 0 16px rgba(100,245,222,.48); transition: width .14s linear; }
 .live-score-copy > strong { display: block; margin-top: 3px; color: #f2f1ff; font: 900 clamp(20px, 2.6vw, 31px)/1 'DM Mono', monospace; letter-spacing: -.045em; text-shadow: 0 2px 7px rgba(0,0,0,.72); }
-.live-stage-song { justify-self: center; align-self: start; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; max-width: 260px; padding: 8px 12px; border: 1px solid rgba(222,226,255,.16); border-radius: 0 0 11px 11px; color: #fff; background: rgba(14,20,48,.38); backdrop-filter: blur(12px); text-align: center; }
+.live-stage-song { justify-self: center; align-self: start; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; max-width: min(360px, 90vw); padding: 8px 16px; border: 1px solid rgba(222,226,255,.2); border-radius: 12px; color: #fff; background: rgba(8,13,34,.84); box-shadow: 0 8px 28px rgba(0,0,0,.24); text-align: center; }
 .live-stage-song b { max-width: 100%; overflow: hidden; color: #f4f1ff; font-size: clamp(10px, 1.1vw, 14px); text-overflow: ellipsis; white-space: nowrap; }
 .live-stage-song span { color: rgba(220,223,250,.7); font: 8px 'DM Mono', monospace; white-space: nowrap; }
 .live-life-panel { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; color: #fff; pointer-events: auto; }
@@ -1139,7 +1139,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .live-combo-float b { color: #fff; font: 1000 clamp(52px, 8vw, 104px)/.95 Arial, sans-serif; letter-spacing: -.075em; -webkit-text-stroke: 1.5px rgba(232,204,255,.92); text-shadow: 0 5px 0 #6e6ad1, 0 8px 20px rgba(0,0,0,.42), 0 0 18px rgba(255,140,236,.7); }
 .live-track-caption { position: absolute; z-index: 3; left: clamp(12px, 2.5vw, 32px); bottom: max(10px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 8px; color: rgba(232,236,255,.56); font: 8px 'DM Mono', monospace; text-shadow: 0 1px 4px #080c22; pointer-events: none; }
 .live-track-caption b { color: rgba(255,255,255,.8); }
-.judge-callout { z-index: 3; top: 57%; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
+.judge-callout { position: absolute; z-index: 3; top: 57%; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
 .judge-callout span { font: 1000 clamp(25px, 3.3vw, 42px) Arial, sans-serif; letter-spacing: -.04em; color: #fff; text-shadow: 0 3px 8px rgba(0,0,0,.64), 0 0 18px currentColor; }
 .judge-perfect { color: #8ffff0 !important; }
 .judge-great { color: #f3a9ff !important; }
@@ -1149,7 +1149,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .live-stage-screen .pause-overlay h2 { color: #fff; }
 
 @media (max-width: 680px) {
-  .live-hud-top { grid-template-columns: minmax(145px, 1fr) minmax(0, 1fr); left: 8px; right: 8px; gap: 4px; }
+  .live-hud-top { grid-template-columns: minmax(145px, 1fr) auto; left: 8px; right: 8px; gap: 4px; }
   .live-score-panel { gap: 6px; }
   .live-rank-stamp { width: 35px; height: 43px; }
   .live-rank-stamp b { font-size: 25px; }
@@ -1160,7 +1160,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .live-rank-markers i::after { top: 11px; height: 6px; }
   .live-score-track { height: 8px; }
   .live-score-copy > strong { font-size: 17px; }
-  .live-stage-song { display: none; }
+  .live-stage-song { position: absolute; top: 54px; left: 50%; display: flex; width: max-content; max-width: calc(100vw - 30px); padding: 5px 11px; transform: translateX(-50%); }
   .live-life-panel { gap: 5px; }
   .live-life-copy { grid-template-columns: 14px auto auto; column-gap: 3px; }
   .live-life-copy svg { width: 14px; height: 14px; }

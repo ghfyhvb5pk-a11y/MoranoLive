@@ -13,89 +13,67 @@ export interface ChartNote {
 interface DifficultyConfig {
   lanes: number;
   subdivisions: number;
-  density: number;
-  chord: number;
-  hold: number;
-  flick: number;
+  /** Steps used in each four-beat phrase.  These are authored rhythm patterns,
+   * not a probability used to spray notes through the song. */
+  pattern: readonly number[];
+  chordSteps: readonly number[];
+  holdBars: readonly number[];
+  flickSteps: readonly number[];
 }
 
 const difficultyConfig: Record<DifficultyId, DifficultyConfig> = {
-  seed: { lanes: 6, subdivisions: 1, density: 0.42, chord: 0.015, hold: 0.025, flick: 0.01 },
-  grow: { lanes: 6, subdivisions: 1, density: 0.66, chord: 0.07, hold: 0.06, flick: 0.045 },
-  skilled: { lanes: 6, subdivisions: 2, density: 0.49, chord: 0.15, hold: 0.09, flick: 0.09 },
-  rage: { lanes: 6, subdivisions: 2, density: 0.67, chord: 0.24, hold: 0.1, flick: 0.16 },
-  transcend: { lanes: 6, subdivisions: 3, density: 0.72, chord: 0.28, hold: 0.15, flick: 0.2 },
-  chaos: { lanes: 6, subdivisions: 4, density: 0.72, chord: 0.36, hold: 0.17, flick: 0.24 },
+  seed: { lanes: 6, subdivisions: 1, pattern: [0, 2], chordSteps: [], holdBars: [7], flickSteps: [] },
+  grow: { lanes: 6, subdivisions: 1, pattern: [0, 1, 2, 3], chordSteps: [0], holdBars: [5, 13], flickSteps: [3] },
+  skilled: { lanes: 6, subdivisions: 2, pattern: [0, 2, 4, 6, 7], chordSteps: [0, 4], holdBars: [3, 9, 15], flickSteps: [7] },
+  rage: { lanes: 6, subdivisions: 2, pattern: [0, 1, 2, 4, 5, 6, 7], chordSteps: [0, 4], holdBars: [7, 15], flickSteps: [5, 7] },
+  transcend: { lanes: 6, subdivisions: 4, pattern: [0, 2, 4, 6, 8, 10, 11, 12, 14], chordSteps: [0, 8], holdBars: [3, 11], flickSteps: [6, 11, 14] },
+  chaos: { lanes: 6, subdivisions: 4, pattern: [0, 1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 14, 15], chordSteps: [0, 4, 8, 12], holdBars: [5, 13], flickSteps: [5, 11, 15] },
 };
-
-function seededRandom(seed: number) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
 
 /**
  * A lane is reserved from the head of a long note through its tail. No tap,
  * flick, or second long note can be generated inside that same-lane interval.
  * Long notes stay in one lane for their entire duration.
  */
-export function generateChart(song: Song, difficulty: DifficultyId): { notes: ChartNote[]; laneCount: number; duration: number; maxJudgements: number } {
+export function generateChart(song: Song, difficulty: DifficultyId, startTime = song.audioSrc ? (song.audioLeadIn ?? 0) : 1.4): { notes: ChartNote[]; laneCount: number; duration: number; maxJudgements: number } {
   const config = difficultyConfig[difficulty];
-  const random = seededRandom(song.seed * 31 + difficulty.length * 917 + config.lanes * 83);
   const beat = 60 / song.bpm;
   const notes: ChartNote[] = [];
   const laneBusyUntil = Array.from({ length: config.lanes }, () => 0);
   let id = 0;
   const beats = song.chartBeats ?? 96;
-  const totalSteps = beats * config.subdivisions;
-  let previousLane = Math.floor(random() * config.lanes);
+  const bars = Math.floor(beats / 4);
+  const stepsPerBar = config.subdivisions * 4;
+  const songPhase = song.seed % config.lanes;
 
-  for (let step = 0; step < totalSteps; step += 1) {
-    const beatIndex = step / config.subdivisions;
-    const barPosition = beatIndex % 4;
-    const accent = barPosition === 0 || barPosition === 2 ? 0.12 : 0;
-    const probability = Math.min(0.96, config.density + accent);
-    if (random() > probability) continue;
-
-    const time = 1.4 + step * (beat / config.subdivisions);
-    const availableLanes = Array.from({ length: config.lanes }, (_, lane) => lane)
-      .filter((lane) => time >= laneBusyUntil[lane]);
-    if (!availableLanes.length) continue;
-
-    let lane = availableLanes[Math.floor(random() * availableLanes.length)];
-    if (availableLanes.length > 1 && random() > 0.68) {
-      const alternatives = availableLanes.filter((candidate) => candidate !== previousLane);
-      if (alternatives.length) lane = alternatives[Math.floor(random() * alternatives.length)];
-    }
-    previousLane = lane;
-
-    const kindRoll = random();
-    let type: NoteType = 'tap';
-    let endTime: number | undefined;
-    if (kindRoll < config.hold) {
-      type = 'hold';
-      endTime = time + beat * (1.0 + random() * 1.5);
-      laneBusyUntil[lane] = endTime + beat * 0.15;
-    } else if (kindRoll < config.hold + config.flick) {
-      type = 'flick';
-    }
+  const canPlace = (lane: number, time: number) => time >= laneBusyUntil[lane];
+  const add = (time: number, lane: number, type: NoteType, endTime?: number) => {
+    if (!canPlace(lane, time)) return;
     notes.push({ id: id++, time, lane, type, endTime });
+    if (type === 'hold' && endTime !== undefined) laneBusyUntil[lane] = endTime + beat * 0.12;
+  };
 
-    // Chords may occupy another currently free lane, never the long-note lane.
-    if (random() < config.chord) {
-      const chordLanes = Array.from({ length: config.lanes }, (_, candidate) => candidate)
-        .filter((candidate) => candidate !== lane && time >= laneBusyUntil[candidate]);
-      if (chordLanes.length) {
-        const secondLane = chordLanes[Math.floor(random() * chordLanes.length)];
-        const secondType: NoteType = random() > 0.9 ? 'flick' : 'tap';
-        notes.push({ id: id++, time, lane: secondLane, type: secondType });
+  // A four-beat phrase is repeated with lane rotations and alternating hand
+  // shapes. This is deterministic and musical: downbeats, backbeats and
+  // phrase endings always have a stable purpose at every difficulty.
+  for (let bar = 0; bar < bars; bar += 1) {
+    const phrase = Math.floor(bar / 4);
+    const laneShift = (songPhase + phrase * 2 + (bar % 2)) % config.lanes;
+    for (const step of config.pattern) {
+      const time = startTime + (bar * stepsPerBar + step) * (beat / config.subdivisions);
+      const lane = (laneShift + Math.floor(step / Math.max(1, config.subdivisions)) + step) % config.lanes;
+      const isHold = config.holdBars.includes(bar % 16) && step === config.pattern[0];
+      const isFlick = !isHold && config.flickSteps.includes(step) && (bar + phrase) % 2 === 1;
+      add(time, lane, isHold ? 'hold' : isFlick ? 'flick' : 'tap', isHold ? time + beat * (1.5 + (bar % 3) * 0.5) : undefined);
+
+      if (config.chordSteps.includes(step) && (bar + step) % 2 === 0) {
+        const secondLane = (lane + 3 + (phrase % 2)) % config.lanes;
+        add(time, secondLane, 'tap');
       }
     }
   }
 
   notes.sort((a, b) => a.time - b.time || a.lane - b.lane);
   const maxJudgements = notes.length;
-  return { notes, laneCount: config.lanes, duration: 1.4 + beats * beat, maxJudgements };
+  return { notes, laneCount: config.lanes, duration: startTime + beats * beat, maxJudgements };
 }

@@ -616,18 +616,31 @@ function LiveScreen({ song, selectedSongId, onSongChange, difficulty, onDifficul
 
   useEffect(() => {
     if (!running || result || !canvasRef.current) return;
-    const session = new RhythmSession(canvasRef.current, song, difficulty, {
-      noteSpeed: save.settings.noteSpeed,
-      timingOffset: save.settings.timingOffset,
-      volume: save.settings.volume,
-      laneGuide: save.settings.laneGuide,
-      teamSkills,
-      onUpdate: (nextStats, time) => { setStats(nextStats); setSongTime(time); },
-      onFinish: (nextResult) => { setRunning(false); setPaused(false); onFinish(nextResult); },
-    });
-    sessionRef.current = session;
-    void session.start().catch((error: unknown) => { onNotify(error instanceof Error ? error.message : '라이브를 시작할 수 없습니다.'); setRunning(false); });
-    return () => { session.dispose(); sessionRef.current = null; };
+    let session: RhythmSession | null = null;
+    try {
+      session = new RhythmSession(canvasRef.current, song, difficulty, {
+        noteSpeed: save.settings.noteSpeed,
+        timingOffset: save.settings.timingOffset,
+        volume: save.settings.volume,
+        laneGuide: save.settings.laneGuide,
+        teamSkills,
+        onUpdate: (nextStats, time) => { setStats(nextStats); setSongTime(time); },
+        onFinish: (nextResult) => { setRunning(false); setPaused(false); onFinish(nextResult); },
+      });
+      sessionRef.current = session;
+      void session.start().catch((error: unknown) => {
+        session?.dispose();
+        sessionRef.current = null;
+        onNotify(error instanceof Error ? error.message : '음원 재생을 시작하지 못했습니다.');
+        setRunning(false);
+      });
+    } catch (error) {
+      session?.dispose();
+      sessionRef.current = null;
+      onNotify(error instanceof Error ? error.message : '라이브를 초기화하지 못했습니다.');
+      setRunning(false);
+    }
+    return () => { session?.dispose(); sessionRef.current = null; };
   }, [running, result, song.id, difficulty]);
 
   useEffect(() => { sessionRef.current?.setVolume(save.settings.volume); }, [save.settings.volume]);
@@ -655,11 +668,10 @@ function LiveScreen({ song, selectedSongId, onSongChange, difficulty, onDifficul
           <strong>{(stats?.score || 0).toLocaleString('ko-KR')}</strong>
         </div>
       </div>
-      <div className="live-stage-song"><b>{song.title}</b><span>{song.artist} · {song.bpm} BPM · {difficultyInfo.name}</span></div>
       <div className="live-life-panel"><div className="live-life-copy"><Heart size={20} fill="currentColor" /><span>LIFE</span><b>{Math.round((stats?.life ?? 100) * 10)}</b></div><div className="live-life-track"><i style={{ width: `${stats?.life ?? 100}%` }} /></div><button className="live-pause-button" onClick={togglePause} aria-label={paused ? '계속하기' : '일시정지'}>{paused ? <Play size={22} fill="currentColor" /> : <Pause size={22} fill="currentColor" />}</button><button className="live-exit-button" onClick={exitToLobby} aria-label="선곡 화면으로 나가기"><X size={18} /></button></div>
     </div>
     <div className="live-combo-float"><span>COMBO</span><b>{stats?.combo || 0}</b></div>
-    <div className="live-track-caption"><span>{song.audioSrc ? 'ORIGINAL MP3 SYNC' : 'LIVE PERFORMANCE'}</span><b>{songTime.toFixed(1)}s</b><i>{Math.round(song.duration)}s</i></div>
+    <div className="live-track-caption"><span>{song.audioSrc ? 'ORIGINAL MP3' : 'LIVE'}</span><b>{songTime.toFixed(1)}s</b><i>{Math.round(song.duration)}s</i></div>
     <div className="judge-callout">{stats?.lastJudge && <span className={`judge-${stats.lastJudge.toLowerCase()}`}>{stats.lastJudge}</span>}</div>
     {paused && <div className="pause-overlay"><div><Pause size={30} /><h2>PAUSED</h2><p>잠시 숨을 고르고 다시 시작하세요.</p><Button onClick={togglePause}><Play size={16} fill="currentColor" /> 계속하기</Button><Button variant="ghost" onClick={exitToLobby}>선곡 화면</Button></div></div>}
   </div>;

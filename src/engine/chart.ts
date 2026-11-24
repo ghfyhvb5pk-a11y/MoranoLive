@@ -1,22 +1,31 @@
 import type { DifficultyId, Song } from '../data/gameData';
 
-export type NoteType = 'tap' | 'hold' | 'slide' | 'flick' | 'special';
+/** Only three note gestures exist in the live ruleset. */
+export type NoteType = 'tap' | 'hold' | 'flick';
 export interface ChartNote {
   id: number;
   time: number;
   lane: number;
   type: NoteType;
   endTime?: number;
-  endLane?: number;
 }
 
-const difficultyConfig: Record<DifficultyId, { lanes: number; subdivisions: number; density: number; chord: number; hold: number; slide: number; flick: number; special: number }> = {
-  seed: { lanes: 2, subdivisions: 1, density: 0.42, chord: 0.015, hold: 0.025, slide: 0, flick: 0.01, special: 0 },
-  grow: { lanes: 2, subdivisions: 1, density: 0.66, chord: 0.07, hold: 0.06, slide: 0.015, flick: 0.045, special: 0.01 },
-  skilled: { lanes: 2, subdivisions: 2, density: 0.49, chord: 0.15, hold: 0.09, slide: 0.06, flick: 0.09, special: 0.035 },
-  rage: { lanes: 2, subdivisions: 2, density: 0.67, chord: 0.24, hold: 0.1, slide: 0.12, flick: 0.16, special: 0.07 },
-  transcend: { lanes: 2, subdivisions: 3, density: 0.72, chord: 0.28, hold: 0.15, slide: 0.18, flick: 0.2, special: 0.1 },
-  chaos: { lanes: 4, subdivisions: 4, density: 0.72, chord: 0.36, hold: 0.17, slide: 0.24, flick: 0.24, special: 0.14 },
+interface DifficultyConfig {
+  lanes: number;
+  subdivisions: number;
+  density: number;
+  chord: number;
+  hold: number;
+  flick: number;
+}
+
+const difficultyConfig: Record<DifficultyId, DifficultyConfig> = {
+  seed: { lanes: 6, subdivisions: 1, density: 0.42, chord: 0.015, hold: 0.025, flick: 0.01 },
+  grow: { lanes: 6, subdivisions: 1, density: 0.66, chord: 0.07, hold: 0.06, flick: 0.045 },
+  skilled: { lanes: 6, subdivisions: 2, density: 0.49, chord: 0.15, hold: 0.09, flick: 0.09 },
+  rage: { lanes: 6, subdivisions: 2, density: 0.67, chord: 0.24, hold: 0.1, flick: 0.16 },
+  transcend: { lanes: 6, subdivisions: 3, density: 0.72, chord: 0.28, hold: 0.15, flick: 0.2 },
+  chaos: { lanes: 6, subdivisions: 4, density: 0.72, chord: 0.36, hold: 0.17, flick: 0.24 },
 };
 
 function seededRandom(seed: number) {
@@ -27,11 +36,17 @@ function seededRandom(seed: number) {
   };
 }
 
+/**
+ * A lane is reserved from the head of a long note through its tail. No tap,
+ * flick, or second long note can be generated inside that same-lane interval.
+ * Long notes stay in one lane for their entire duration.
+ */
 export function generateChart(song: Song, difficulty: DifficultyId): { notes: ChartNote[]; laneCount: number; duration: number; maxJudgements: number } {
   const config = difficultyConfig[difficulty];
   const random = seededRandom(song.seed * 31 + difficulty.length * 917 + config.lanes * 83);
   const beat = 60 / song.bpm;
   const notes: ChartNote[] = [];
+  const laneBusyUntil = Array.from({ length: config.lanes }, () => 0);
   let id = 0;
   const beats = song.chartBeats ?? 96;
   const totalSteps = beats * config.subdivisions;
@@ -44,44 +59,43 @@ export function generateChart(song: Song, difficulty: DifficultyId): { notes: Ch
     const probability = Math.min(0.96, config.density + accent);
     if (random() > probability) continue;
 
-    let lane = Math.floor(random() * config.lanes);
-    if (difficulty !== 'chaos' && random() > 0.72) lane = 1 - previousLane;
-    if (difficulty === 'chaos' && random() > 0.68) lane = (previousLane + 1 + Math.floor(random() * 3)) % 4;
+    const time = 1.4 + step * (beat / config.subdivisions);
+    const availableLanes = Array.from({ length: config.lanes }, (_, lane) => lane)
+      .filter((lane) => time >= laneBusyUntil[lane]);
+    if (!availableLanes.length) continue;
+
+    let lane = availableLanes[Math.floor(random() * availableLanes.length)];
+    if (availableLanes.length > 1 && random() > 0.68) {
+      const alternatives = availableLanes.filter((candidate) => candidate !== previousLane);
+      if (alternatives.length) lane = alternatives[Math.floor(random() * alternatives.length)];
+    }
     previousLane = lane;
 
-    const time = 1.4 + step * (beat / config.subdivisions);
     const kindRoll = random();
     let type: NoteType = 'tap';
     let endTime: number | undefined;
-    let endLane: number | undefined;
     if (kindRoll < config.hold) {
       type = 'hold';
-      endTime = time + beat * (0.75 + random() * 1.1);
-    } else if (kindRoll < config.hold + config.slide) {
-      type = 'slide';
-      endTime = time + beat * (0.55 + random() * 0.9);
-      endLane = (lane + 1 + Math.floor(random() * (config.lanes - 1))) % config.lanes;
-    } else if (kindRoll < config.hold + config.slide + config.flick) {
+      endTime = time + beat * (1.0 + random() * 1.5);
+      laneBusyUntil[lane] = endTime + beat * 0.15;
+    } else if (kindRoll < config.hold + config.flick) {
       type = 'flick';
-    } else if (kindRoll < config.hold + config.slide + config.flick + config.special) {
-      type = 'special';
     }
-    notes.push({ id: id++, time, lane, type, endTime, endLane });
+    notes.push({ id: id++, time, lane, type, endTime });
 
+    // Chords may occupy another currently free lane, never the long-note lane.
     if (random() < config.chord) {
-      let secondLane = lane;
-      while (secondLane === lane) secondLane = Math.floor(random() * config.lanes);
-      notes.push({ id: id++, time, lane: secondLane, type: random() > 0.86 ? 'flick' : 'tap' });
-    }
-    if (difficulty === 'chaos' && random() < config.chord * 0.28) {
-      const used = new Set(notes.filter((note) => note.time === time).map((note) => note.lane));
-      const freeLanes = [0, 1, 2, 3].filter((index) => !used.has(index));
-      if (freeLanes.length) notes.push({ id: id++, time, lane: freeLanes[Math.floor(random() * freeLanes.length)], type: 'tap' });
+      const chordLanes = Array.from({ length: config.lanes }, (_, candidate) => candidate)
+        .filter((candidate) => candidate !== lane && time >= laneBusyUntil[candidate]);
+      if (chordLanes.length) {
+        const secondLane = chordLanes[Math.floor(random() * chordLanes.length)];
+        const secondType: NoteType = random() > 0.9 ? 'flick' : 'tap';
+        notes.push({ id: id++, time, lane: secondLane, type: secondType });
+      }
     }
   }
 
   notes.sort((a, b) => a.time - b.time || a.lane - b.lane);
-  // A hold or slide contributes one judgement when its complete gesture resolves.
   const maxJudgements = notes.length;
   return { notes, laneCount: config.lanes, duration: 1.4 + beats * beat, maxJudgements };
 }

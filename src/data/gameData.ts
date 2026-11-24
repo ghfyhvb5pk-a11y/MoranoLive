@@ -82,7 +82,7 @@ export const DIFFICULTIES: { id: DifficultyId; name: string; english: string; de
   { id: 'skilled', name: '숙련', english: 'HARD', description: '엇박과 롱노트가 섞이는 구간' },
   { id: 'rage', name: '폭주', english: 'EXPERT', description: '빠른 교차 입력과 연속 플릭' },
   { id: 'transcend', name: '초월', english: 'MASTER', description: '밀도 높은 리듬과 정교한 패턴' },
-  { id: 'chaos', name: '혼돈', english: 'APPEND', description: '4레인 이상, 다지·슬라이드 패턴' },
+  { id: 'chaos', name: '혼돈', english: 'APPEND', description: '6레인 고밀도 멀티 입력과 동시치기 패턴' },
 ];
 
 export const ALBUMS: Album[] = [

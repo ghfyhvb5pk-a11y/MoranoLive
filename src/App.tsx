@@ -34,7 +34,7 @@ const NAV_ITEMS: { id: Screen; label: string; icon: typeof Home }[] = [
   { id: 'missions', label: '미션', icon: CalendarCheck },
 ];
 
-const PICKUP_BY_BANNER: Record<GachaBanner, string> = { pickup: 'mora_4_spark', standard: 'hwarok_4_core', event: 'mailo_4_starlane' };
+const PICKUP_BY_BANNER: Record<GachaBanner, string> = { pickup: 'mora_4_spark', standard: 'hwarok_4_core', event: 'alpi_4_silence' };
 const BANNER_LABEL: Record<GachaBanner, string> = { pickup: '말풍선 픽업', standard: '상시 모집', event: '별빛 우편 이벤트' };
 const RARITY_RATE = '4성 3% · 3성 17% · 2성 35% · 1성 45%';
 
@@ -115,7 +115,7 @@ function App() {
         client.from('story_claims').select('story_id').eq('user_id', session.user.id),
       ]);
       if (!alive) return;
-      const ownedCards: OwnedCard[] = (serverCards || []).map((item: { card_id: string; quantity: number; level: number }) => ({ cardId: item.card_id, quantity: item.quantity, level: item.level }));
+      const ownedCards: OwnedCard[] = (serverCards || []).filter((item: { card_id: string }) => CARDS.some((card) => card.id === item.card_id)).map((item: { card_id: string; quantity: number; level: number }) => ({ cardId: item.card_id, quantity: item.quantity, level: item.level }));
       const gachaHistory: GachaLog[] = (serverHistory || []).map((item: { id: string; banner: string; pulls: unknown; created_at: string }) => ({ id: item.id, banner: item.banner, cardIds: Array.isArray(item.pulls) ? item.pulls.map((pull: string | { cardId?: string }) => typeof pull === 'string' ? pull : pull.cardId || '').filter(Boolean) : [], createdAt: item.created_at }));
       const storyRewardsClaimed = (serverStoryClaims || []).map((item: { story_id: string }) => item.story_id);
       if (cardsError) notify(`서버 카드 목록을 불러오지 못했습니다: ${cardsError.message}`);
@@ -157,6 +157,11 @@ function App() {
   const selectedCard = selectedCardId ? CARDS.find((card) => card.id === selectedCardId) : undefined;
 
   const changeScreen = (next: Screen) => {
+    if (next === 'stories' && !document.fullscreenElement) {
+      const root = document.documentElement as HTMLElement & { requestFullscreen?: () => Promise<void> };
+      if (root.requestFullscreen) void root.requestFullscreen().catch(() => undefined);
+    }
+    if (screen === 'stories' && next !== 'stories' && document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
     setScreen(next);
     setLiveResult(null);
   };
@@ -403,7 +408,7 @@ function App() {
   const resetLive = () => { setLiveResult(null); setLiveKey((value) => value + 1); };
 
   return (
-    <div className="app-shell">
+    <div className={cx('app-shell', screen === 'stories' && 'story-app-shell')}>
       <aside className="sidebar">
         <button className="brand-lockup" onClick={() => changeScreen('home')} aria-label="홈으로">
           <span className="brand-mark">M!</span>
@@ -421,7 +426,7 @@ function App() {
           <button className={cx('nav-item', screen === 'account' && 'active')} onClick={() => changeScreen('account')}><UserCircle2 size={18} /><span>계정 / 프로필</span></button>
           <button className={cx('nav-item', screen === 'settings' && 'active')} onClick={() => changeScreen('settings')}><Settings size={18} /><span>설정</span></button>
         </div>
-        <div className="sidebar-version">v0.1.0 · LOCAL PLAYABLE BUILD</div>
+        <div className="sidebar-version">v0.2.0 · THREE DINO EDITION</div>
       </aside>
 
       <main className="main-column">
@@ -442,7 +447,7 @@ function App() {
           {screen === 'characters' && <CharactersScreen selectedCharacterId={selectedCharacterId} onSelectCharacter={setSelectedCharacterId} />}
           {screen === 'gacha' && <GachaScreen banner={gachaBanner} onBannerChange={setGachaBanner} save={save} pulls={lastPulls} onDraw={drawGacha} onExchange={exchangeFeatured} ownedCardIds={ownedCardIds} busy={pullBusy} />}
           {screen === 'cards' && <CardsScreen save={save} onSelectCard={setSelectedCardId} onToggleFormation={toggleFormation} />}
-          {screen === 'stories' && <StoriesScreen save={save} selectedStoryId={selectedStoryId} onSelectStory={(id) => { setSelectedStoryId(id); setStoryLine(0); }} line={storyLine} onNextLine={setStoryLine} onClaim={claimStory} />}
+          {screen === 'stories' && <StoriesScreen save={save} selectedStoryId={selectedStoryId} onSelectStory={(id) => { setSelectedStoryId(id); setStoryLine(0); }} line={storyLine} onNextLine={setStoryLine} onClaim={claimStory} onExit={() => changeScreen('home')} />}
           {screen === 'missions' && <MissionsScreen missions={dailyMissions} save={save} onClaim={claimMission} />}
           {screen === 'account' && <AccountScreen save={save} session={session} ready={authReady} configured={isSupabaseConfigured} email={email} password={password} nickname={nicknameDraft} message={authMessage} busy={authBusy} onEmail={setEmail} onPassword={setPassword} onNickname={setNicknameDraft} onSaveNickname={saveNickname} onRegister={register} onLogin={login} onLogout={logout} />}
           {screen === 'settings' && <SettingsScreen save={save} onChange={(settings) => setSave((previous) => ({ ...previous, settings: { ...previous.settings, ...settings } }))} onNotify={notify} />}
@@ -462,12 +467,12 @@ function App() {
 
 function HomeScreen({ save, onNavigate, onSelectSong }: { save: UserSave; onNavigate: (screen: Screen) => void; onSelectSong: (id: string) => void }) {
   const featuredSong = SONGS[0];
-  const topCharacters = ['mora', 'nono', 'raon'].map((id) => getCharacter(id));
+  const topCharacters = ['mora', 'hwarok', 'alpi'].map((id) => getCharacter(id));
   const recordCount = Object.values(save.records).reduce((count, record) => count + Object.keys(record).length, 0);
   return <div className="screen-stack home-screen">
     <section className="hero-banner">
       <div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" /><div className="hero-spark spark-a">✦</div><div className="hero-spark spark-b">✧</div>
-      <div className="hero-copy"><Tag tone="gold">SEASON 01 · LIVE NOW</Tag><div className="hero-kicker">A DINO IDOL RHYTHM GAME</div><h1>말이 좀 꼬여도,<br /><em>박자는 맞잖아!</em></h1><p>공룡 아이돌의 엉뚱한 하루와 오리지널 리듬을 만나 봐.<br />오늘의 무대는 네 손끝에서 시작돼.</p><div className="hero-actions"><Button size="lg" onClick={() => onNavigate('live')}><Play size={17} fill="currentColor" /> 라이브 시작</Button><Button variant="secondary" size="lg" onClick={() => onNavigate('stories')}><BookOpen size={17} /> 스토리 보기</Button></div><div className="hero-microcopy"><span><i className="live-dot" /> ALWAYS ON BEAT</span><span>15 DINOSAUR IDOLS</span><span>5 ORIGINAL ALBUMS</span></div></div>
+      <div className="hero-copy"><Tag tone="gold">SEASON 01 · LIVE NOW</Tag><div className="hero-kicker">A DINO IDOL RHYTHM GAME</div><h1>말이 좀 꼬여도,<br /><em>박자는 맞잖아!</em></h1><p>공룡 아이돌의 엉뚱한 하루와 오리지널 리듬을 만나 봐.<br />오늘의 무대는 네 손끝에서 시작돼.</p><div className="hero-actions"><Button size="lg" onClick={() => onNavigate('live')}><Play size={17} fill="currentColor" /> 라이브 시작</Button><Button variant="secondary" size="lg" onClick={() => onNavigate('stories')}><BookOpen size={17} /> 스토리 보기</Button></div><div className="hero-microcopy"><span><i className="live-dot" /> ALWAYS ON BEAT</span><span>3 ORIGINAL DINOSAURS</span><span>5 ORIGINAL ALBUMS</span></div></div>
       <div className="hero-art-area"><div className="hero-disc disc-back" /><div className="hero-disc disc-front"><span>??!</span><small>논점공룡</small></div><div className="hero-character-main"><CharacterArt character={topCharacters[0]} size={250} /></div><div className="hero-character-left"><CharacterArt character={topCharacters[1]} size={142} /></div><div className="hero-character-right"><CharacterArt character={topCharacters[2]} size={154} /></div><div className="hero-floating-note note-one">♪</div><div className="hero-floating-note note-two">!</div></div>
       <div className="hero-number">01 <span>/ 05</span></div>
     </section>
@@ -479,14 +484,14 @@ function HomeScreen({ save, onNavigate, onSelectSong }: { save: UserSave; onNavi
       <div className="feature-panel daily-panel"><div className="feature-head"><div><div className="eyebrow">DAILY CHECK-IN</div><h3>오늘의 리듬 루틴</h3></div><CalendarCheck size={21} /></div><div className="mission-progress"><div className="mission-progress-top"><b>라이브 1회 플레이</b><span>{Math.min(1, save.missionProgress.play1 || 0)} / 1</span></div><div className="progress-track"><i style={{ width: `${Math.min(100, (save.missionProgress.play1 || 0) * 100)}%` }} /></div></div><div className="daily-reward"><div className="reward-icon"><Gem size={18} /></div><div><b>크리스탈 80개</b><span>첫 라이브 미션 보상</span></div><Button variant="secondary" size="sm" onClick={() => onNavigate('missions')}>미션 보기</Button></div></div>
     </section>
 
-    <section className="home-section"><PanelTitle eyebrow="MEET THE CREW" title="오늘의 주인공" description="각자의 소리와 색을 가진 다섯 그룹, 열다섯 명의 공룡 아이돌." action={<Button variant="ghost" size="sm" onClick={() => onNavigate('characters')}>캐릭터 도감 <ArrowRight size={14} /></Button>} /><div className="home-character-row">{topCharacters.map((character) => <button key={character.id} className="home-character-card" onClick={() => onNavigate('characters')}><CharacterArt character={character} size={104} /><b>{character.name}</b><span>{character.alias}</span><i>{getGroup(character.groupId).name}</i></button>)}<button className="more-character-card" onClick={() => onNavigate('characters')}><span>+12</span><b>더 많은 멤버</b><small>MEET ALL IDOLS</small></button></div></section>
+    <section className="home-section"><PanelTitle eyebrow="MEET THE CREW" title="오늘의 주인공" description="뭐라노사우르스, 개빡치노사우르스, 알빠노사우르스. 세 공룡이 무대를 책임집니다." action={<Button variant="ghost" size="sm" onClick={() => onNavigate('characters')}>캐릭터 도감 <ArrowRight size={14} /></Button>} /><div className="home-character-row">{topCharacters.map((character) => <button key={character.id} className="home-character-card" onClick={() => onNavigate('characters')}><CharacterArt character={character} size={104} /><b>{character.name}</b><span>{character.alias}</span><i>{getGroup(character.groupId).name}</i></button>)}</div></section>
   </div>;
 }
 
 function AlbumsScreen({ selectedAlbumId, onSelectAlbum, onSelectSong, save }: { selectedAlbumId: string; onSelectAlbum: (id: string) => void; onSelectSong: (id: string) => void; save: UserSave }) {
   const selected = getAlbum(selectedAlbumId);
   const albumSongs = SONGS.filter((song) => song.albumId === selectedAlbumId);
-  return <div className="screen-stack"><PanelTitle eyebrow="DISCOGRAPHY" title="앨범 & 디스코그래피" description="다섯 그룹의 세계관과 장르를 따라가며 무대를 골라 보세요." />
+  return <div className="screen-stack"><PanelTitle eyebrow="DISCOGRAPHY" title="앨범 & 디스코그래피" description="세 공룡의 사운드가 세 공룡의 사운드가 다섯 개의 오리지널 앨범으로 확장됩니다." />
     <div className="album-shelf">{ALBUMS.map((album, index) => { const group = getGroup(album.groupId); return <button key={album.id} onClick={() => onSelectAlbum(album.id)} className={cx('album-tile', selectedAlbumId === album.id && 'selected')} style={{ '--album-a': album.colors[0], '--album-b': album.colors[1], '--album-c': album.colors[2] } as CSSProperties}><div className="album-tile-art"><div className="album-art-disc">{group.logo}</div><span className="album-number">0{index + 1}</span><b>{album.title.split(' : ')[0].replace('의 ', '\n')}</b><small>{group.name}</small><div className="album-art-stars">✦　✧　✦</div></div><span className="album-tile-bottom"><b>{album.subtitle}</b><small>{album.genre}</small></span></button>; })}</div>
     <section className="album-detail-panel"><div className="album-detail-cover" style={{ '--album-a': selected.colors[0], '--album-b': selected.colors[1], '--album-c': selected.colors[2] } as CSSProperties}><div className="album-cover-symbol">{getGroup(selected.groupId).logo}</div><div className="album-cover-title"><span>ORIGINAL ALBUM</span><b>{selected.title}</b><small>{getGroup(selected.groupId).name}</small></div></div><div className="album-detail-copy"><Tag tone="mint">{selected.genre}</Tag><h3>{selected.title}</h3><p className="album-subtitle">{selected.subtitle}</p><p>{selected.world}</p><div className="album-group-row"><div className="album-group-mark" style={{ background: selected.colors[0] }}>{getGroup(selected.groupId).logo}</div><div><b>{getGroup(selected.groupId).name}</b><span>{getGroup(selected.groupId).concept}</span></div><Tag>{getGroup(selected.groupId).genre}</Tag></div><div className="album-story-box"><b>ALBUM STORY</b><p>{selected.story}</p></div></div></section>
     <section><PanelTitle eyebrow="TRACK LIST" title="수록곡" description={`${albumSongs.length} tracks · 곡을 선택하면 라이브 선곡 화면으로 이동합니다.`} /><div className="track-list">{albumSongs.map((song, index) => { const best = save.records[song.id] ? Math.max(...Object.values(save.records[song.id]!).map((record) => record?.score || 0)) : 0; return <button key={song.id} onClick={() => onSelectSong(song.id)} className="track-row"><span className="track-index">{String(index + 1).padStart(2, '0')}</span><div className="track-name"><b>{song.title}</b><small>{song.description}</small></div><span className="track-bpm">{song.bpm} <small>BPM</small></span><span className="track-length">{song.duration}s</span><span className="track-best">{best ? `${best.toLocaleString()} PTS` : 'NO RECORD'}</span><span className="track-action"><Play size={15} fill="currentColor" /></span></button>; })}</div></section>
@@ -498,7 +503,7 @@ function CharactersScreen({ selectedCharacterId, onSelectCharacter }: { selected
   const selected = getCharacter(selectedCharacterId);
   const filtered = CHARACTERS.filter((character) => groupFilter === 'all' || character.groupId === groupFilter);
   const group = getGroup(selected.groupId);
-  return <div className="screen-stack"><PanelTitle eyebrow="CHARACTER ARCHIVE" title="캐릭터 도감" description="다섯 그룹, 열다섯 명의 개성 넘치는 공룡 아이돌을 만나 보세요." />
+  return <div className="screen-stack"><PanelTitle eyebrow="CHARACTER ARCHIVE" title="캐릭터 도감" description="세 공룡의 프로필과 무대 콘셉트를 확인하세요." />
     <div className="filter-pills">{[{ id: 'all', name: 'ALL MEMBERS' }, ...GROUPS.map((item) => ({ id: item.id, name: item.name }))].map((item) => <button key={item.id} onClick={() => setGroupFilter(item.id)} className={cx(groupFilter === item.id && 'active')}>{item.name}</button>)}</div>
     <div className="character-layout"><div className="character-grid">{filtered.map((character) => <button key={character.id} onClick={() => onSelectCharacter(character.id)} className={cx('character-tile', selectedCharacterId === character.id && 'selected')}><div className="character-tile-art" style={{ background: `linear-gradient(145deg, ${character.colors[0]}, ${character.colors[2]})` }}><CharacterArt character={character} size={114} /></div><div className="character-tile-info"><b>{character.name}</b><span>{character.role}</span><small>{getGroup(character.groupId).name}</small></div></button>)}</div>
       <aside className="character-profile"><div className="character-profile-banner" style={{ background: `linear-gradient(130deg, ${selected.colors[0]}, ${selected.colors[2]})` }}><div className="profile-banner-rings" /><CharacterArt character={selected} size={214} /></div><div className="character-profile-copy"><div className="profile-name-line"><div><Tag tone="mint">{group.name}</Tag><h2>{selected.name}</h2><span>{selected.alias}</span></div><div className="profile-number">NO.{String(CHARACTERS.findIndex((character) => character.id === selected.id) + 1).padStart(2, '0')}</div></div><div className="profile-role">{selected.species} · {selected.age}세 · {selected.role}</div><p>{selected.personality}</p><div className="profile-detail-grid"><div><small>말투</small><b>{selected.speech}</b></div><div><small>취미</small><b>{selected.hobby}</b></div><div><small>무대 의상</small><b>{selected.outfit}</b></div><div><small>팀 관계</small><b>{selected.relation}</b></div></div><div className="profile-traits">{selected.traits.map((trait) => <Tag key={trait}>{trait}</Tag>)}</div><div className="character-story"><b>GROWTH STORY</b><p>{selected.story}</p></div><div className="character-quote">“{selected.quote}”</div></div></aside></div>
@@ -543,15 +548,30 @@ function CardsScreen({ save, onSelectCard, onToggleFormation }: { save: UserSave
     <section className="sub-panel formation-panel"><PanelTitle eyebrow="TEAM FORMATION" title={`라이브 편성 · ${equipped.length}/5`} description="편성 카드의 스킬이 실제 라이브 점수·판정·라이프에 적용됩니다." /><div className="formation-row">{equipped.map(({ owned, card }, index) => { const character = getCharacter(card.characterId); return <div className="formation-slot" key={card.id}><span className="formation-index">0{index + 1}</span><CharacterArt character={character} size={70} /><b>{character.name}</b><small>LV.{owned!.level} · {card.rarity}★</small></div>; })}{Array.from({ length: 5 - equipped.length }).map((_, index) => <div className="formation-slot empty" key={`empty-${index}`}><Plus size={22} /><span>빈 슬롯</span></div>)}</div><div className="team-effect-tags">{effectLabels.length ? effectLabels.map((label) => <Tag key={label} tone="mint">{label}</Tag>) : <span className="muted">현재 적용 중인 스킬 효과가 없습니다.</span>}</div></section>
   </div>;
 }
-function StoriesScreen({ save, selectedStoryId, onSelectStory, line, onNextLine, onClaim }: { save: UserSave; selectedStoryId: string; onSelectStory: (id: string) => void; line: number; onNextLine: (value: number) => void; onClaim: (id: string, reward: number) => void }) {
+function StoriesScreen({ save, selectedStoryId, onSelectStory, line, onNextLine, onClaim, onExit }: { save: UserSave; selectedStoryId: string; onSelectStory: (id: string) => void; line: number; onNextLine: (value: number) => void; onClaim: (id: string, reward: number) => void; onExit: () => void }) {
   const story = STORIES.find((item) => item.id === selectedStoryId) || STORIES[0];
   const claimed = save.storyRewardsClaimed.includes(story.id);
   const current = story.lines[Math.min(line, story.lines.length - 1)];
   const done = line >= story.lines.length;
-  return <div className="screen-stack"><PanelTitle eyebrow="DINO THEATER" title="스토리 아카이브" description="멤버들의 말투와 관계, 각 앨범에 담긴 성장 이야기를 읽어 보세요." />
-    <div className="story-layout"><aside className="story-list">{STORIES.map((item, index) => <button key={item.id} disabled={!save.clearedStories.includes(item.id) && index > 0} className={cx('story-list-item', story.id === item.id && 'active', !save.clearedStories.includes(item.id) && index > 0 && 'locked')} onClick={() => { onSelectStory(item.id); }}><span className="story-list-number">0{index + 1}</span><div><b>{item.title}</b><small>{item.category}</small></div>{save.clearedStories.includes(item.id) ? <Check size={16} /> : index > 0 ? <ShieldCheck size={15} /> : <ChevronRight size={15} />}</button>)}</aside>
-      <section className="story-stage"><div className="story-stage-bg"><div className="story-scene-orb" /><div className="story-scene-label">{story.category.toUpperCase()}</div><div className="story-scene-characters">{(story.id === 'main_01' ? ['mora', 'nono', 'raon'] : story.id === 'rage_01' ? ['hwarok', 'tia', 'barak'] : story.id === 'alppa_01' ? ['alpi', 'musim', 'kulu'] : story.id === 'post_01' ? ['mailo', 'sio', 'loop'] : ['fern', 'reef', 'lumi']).map((id) => <CharacterArt key={id} character={getCharacter(id)} size={150} />)}</div></div><div className="story-dialogue"><div className="story-dialogue-top"><Tag tone="mint">EPISODE {String(STORIES.findIndex((item) => item.id === story.id) + 1).padStart(2, '0')}</Tag><span>{line >= story.lines.length ? 'END' : `${Math.min(line + 1, story.lines.length)} / ${story.lines.length}`}</span></div>{done ? <div className="story-end"><Sparkles size={27} /><h3>에피소드 완료</h3><p>이야기가 기록되었습니다. 다음 에피소드도 확인해 보세요.</p>{!claimed && <Button onClick={() => onClaim(story.id, story.reward)}><Gem size={15} /> 보상 받기 · {story.reward}</Button>}</div> : <><div className="speaker-name">{current.speaker}</div><p className="dialogue-text">{current.text}</p><div className="dialogue-bottom"><span>※ {story.requirement}</span><Button onClick={() => onNextLine(line + 1)}>{line === story.lines.length - 1 ? '에피소드 마무리' : '다음 대사'} <ChevronRight size={15} /></Button></div></>}</div></section></div>
+  return <div className="story-immersive-screen">
+    <div className="story-immersive-backdrop" />
+    <header className="story-immersive-top">
+      <div className="story-brand"><span className="story-brand-mark">M!</span><div><b>DINO THEATER</b><small>STORY MODE · FULL SCREEN</small></div></div>
+      <div className="story-episode-tabs">{STORIES.map((item, index) => <button key={item.id} disabled={!save.clearedStories.includes(item.id) && index > 0} className={cx(story.id === item.id && 'active', !save.clearedStories.includes(item.id) && index > 0 && 'locked')} onClick={() => onSelectStory(item.id)}><span>0{index + 1}</span>{item.title}</button>)}</div>
+      <button className="story-exit-button" onClick={onExit}><X size={17}/><span>나가기</span></button>
+    </header>
+    <section className="story-immersive-scene">
+      <div className="story-scene-label">{story.category.toUpperCase()} · EPISODE {String(STORIES.findIndex((item) => item.id === story.id) + 1).padStart(2, '0')}</div>
+      <div className="story-scene-orb" />
+      <div className="story-stage-dust"><i/><i/><i/><i/><i/><i/><i/></div>
+      <div className="story-hero-dinos">{(['mora', 'hwarok', 'alpi'] as const).map((id, index) => <div className={`story-dino story-dino-${index + 1}`} key={id}><CharacterArt character={getCharacter(id)} size={index === 1 ? 300 : 265} /><b>{getCharacter(id).name}</b></div>)}</div>
+    </section>
+    <section className="story-cinematic-dialogue">
+      <div className="story-dialogue-meta"><Tag tone="mint">{story.category}</Tag><span>{done ? 'EPISODE CLEAR' : `${Math.min(line + 1, story.lines.length)} / ${story.lines.length}`}</span></div>
+      {done ? <div className="story-end cinematic-end"><Sparkles size={31}/><h3>에피소드 완료</h3><p>이야기가 기록되었습니다. 보상을 받고 다음 에피소드로 넘어가세요.</p>{!claimed && <Button onClick={() => onClaim(story.id, story.reward)}><Gem size={16}/> 보상 받기 · {story.reward}</Button>}</div> : <div className="story-dialogue-content" onClick={() => onNextLine(line + 1)} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onNextLine(line + 1); }}><div className="cinematic-speaker">{current.speaker}</div><p className="cinematic-line">{current.text}</p><div className="cinematic-next">화면을 누르거나 다음 대사 <ChevronRight size={17}/></div></div>}
+    </section>
   </div>;
+
 }
 
 function MissionsScreen({ missions, save, onClaim }: { missions: ReturnType<typeof getDailyMissions>; save: UserSave; onClaim: (id: string, reward: number) => void }) {
@@ -612,7 +632,7 @@ function LiveScreen({ song, selectedSongId, onSongChange, difficulty, onDifficul
 
   useEffect(() => { sessionRef.current?.setVolume(save.settings.volume); }, [save.settings.volume]);
 
-  const start = () => { setStats(null); setSongTime(0); setPaused(false); setRunning(true); };
+  const start = () => { const root = document.documentElement as HTMLElement & { requestFullscreen?: () => Promise<void> }; if (!document.fullscreenElement && root.requestFullscreen) void root.requestFullscreen().catch(() => undefined); setStats(null); setSongTime(0); setPaused(false); setRunning(true); };
   const toggleFullscreen = async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -624,10 +644,11 @@ function LiveScreen({ song, selectedSongId, onSongChange, difficulty, onDifficul
     if (paused) { await sessionRef.current.resume(); setPaused(false); }
     else { await sessionRef.current.pause(); setPaused(true); }
   };
-  const exitToLobby = () => { setRunning(false); setPaused(false); onExit(); };
+  const exitToLobby = () => { setRunning(false); setPaused(false); onExit(); if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); };
+  const leaveResult = () => { onExit(); if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); };
   const songRecord = save.records[song.id]?.[difficulty];
 
-  if (result) return <div className="screen-stack result-screen"><div className="result-topline"><Tag tone="gold">LIVE RESULT</Tag><span>{getAlbum(song.albumId).title}</span></div><section className="result-hero"><div className="result-rank">{result.rank}</div><div className="result-title"><div className="eyebrow">{song.artist} · {difficultyInfo.english}</div><h2>{song.title}</h2><p>{result.allPerfect ? '완벽한 리듬! 모든 노트가 PERFECT입니다.' : result.fullCombo ? '흐름을 놓치지 않았어요. FULL COMBO!' : '한 번의 무대도 성장의 기록이에요.'}</p></div><div className="result-score"><span>SCORE</span><b>{result.score.toLocaleString('ko-KR')}</b><small>{result.accuracy.toFixed(2)}% ACCURACY</small></div></section><div className="result-badges">{result.allPerfect && <Tag tone="gold"><Crown size={13} /> ALL PERFECT</Tag>}{result.fullCombo && <Tag tone="mint"><Zap size={13} /> FULL COMBO</Tag>}<Tag tone="pink">MAX COMBO {result.maxCombo}</Tag></div><div className="result-stat-grid"><div><span>PERFECT</span><b>{result.perfect}</b></div><div><span>GREAT</span><b>{result.great}</b></div><div><span>GOOD</span><b>{result.good}</b></div><div><span>BAD</span><b>{result.bad}</b></div><div><span>MISS</span><b>{result.miss}</b></div><div><span>MAX COMBO</span><b>{result.maxCombo}</b></div></div><div className="result-reward"><div className="reward-icon"><Gem size={21} /></div><div><b>크리스탈을 획득했어요!</b><span>플레이 점수와 편성 효과에 따라 보상이 지급되었습니다.</span></div><Tag tone="gold">+{Math.round((result.score > 0 ? 15 + Math.floor(result.score / 100000) * 5 : 0) * (1 + rewardBonus / 100))}</Tag></div><div className="result-actions"><Button size="lg" onClick={onRestart}><RefreshCw size={16} /> 다시 플레이</Button><Button size="lg" variant="secondary" onClick={onExit}>선곡으로 돌아가기</Button></div></div>;
+  if (result) return <div className="screen-stack result-screen live-result-immersive"><div className="result-topline"><Tag tone="gold">LIVE RESULT</Tag><span>{getAlbum(song.albumId).title}</span></div><section className="result-hero"><div className="result-rank">{result.rank}</div><div className="result-title"><div className="eyebrow">{song.artist} · {difficultyInfo.english}</div><h2>{song.title}</h2><p>{result.allPerfect ? '완벽한 리듬! 모든 노트가 PERFECT입니다.' : result.fullCombo ? '흐름을 놓치지 않았어요. FULL COMBO!' : '한 번의 무대도 성장의 기록이에요.'}</p></div><div className="result-score"><span>SCORE</span><b>{result.score.toLocaleString('ko-KR')}</b><small>{result.accuracy.toFixed(2)}% ACCURACY</small></div></section><div className="result-badges">{result.allPerfect && <Tag tone="gold"><Crown size={13} /> ALL PERFECT</Tag>}{result.fullCombo && <Tag tone="mint"><Zap size={13} /> FULL COMBO</Tag>}<Tag tone="pink">MAX COMBO {result.maxCombo}</Tag></div><div className="result-stat-grid"><div><span>PERFECT</span><b>{result.perfect}</b></div><div><span>GREAT</span><b>{result.great}</b></div><div><span>GOOD</span><b>{result.good}</b></div><div><span>BAD</span><b>{result.bad}</b></div><div><span>MISS</span><b>{result.miss}</b></div><div><span>MAX COMBO</span><b>{result.maxCombo}</b></div></div><div className="result-reward"><div className="reward-icon"><Gem size={21} /></div><div><b>크리스탈을 획득했어요!</b><span>플레이 점수와 편성 효과에 따라 보상이 지급되었습니다.</span></div><Tag tone="gold">+{Math.round((result.score > 0 ? 15 + Math.floor(result.score / 100000) * 5 : 0) * (1 + rewardBonus / 100))}</Tag></div><div className="result-actions"><Button size="lg" onClick={onRestart}><RefreshCw size={16} /> 다시 플레이</Button><Button size="lg" variant="secondary" onClick={leaveResult}>선곡으로 돌아가기</Button></div></div>;
 
   if (running) return <div className="live-stage-screen"><div className="live-stage-top"><div><span className="eyebrow">NOW PLAYING</span><h2>{song.title}</h2><span>{song.artist} · {song.bpm} BPM · {difficultyInfo.name}</span></div><div className="live-top-controls"><button className="pause-button fullscreen-button" onClick={toggleFullscreen} aria-label="전체 화면"><Maximize2 size={16} /></button><div className="live-combo-mini"><span>COMBO</span><b>{stats?.combo || 0}</b></div><button className="pause-button" onClick={togglePause}>{paused ? <Play size={17} /> : <Pause size={17} />}</button><button className="exit-live-button" onClick={exitToLobby}><X size={17} /></button></div></div><div className="live-hud"><div><span>SCORE</span><b>{(stats?.score || 0).toLocaleString('ko-KR')}</b></div><div><span>ACCURACY</span><b>{(stats?.accuracy || 100).toFixed(2)}%</b></div><div><span>LIFE</span><div className="life-track"><i style={{ width: `${stats?.life ?? 100}%` }} /></div></div><div className="live-progress"><i style={{ width: `${Math.min(100, (songTime / ((96 * 60) / song.bpm + 1.4)) * 100)}%` }} /></div></div><div className="live-canvas-wrap"><canvas ref={canvasRef} className="live-canvas" /><div className="judge-callout">{stats?.lastJudge && <span className={`judge-${stats.lastJudge.toLowerCase()}`}>{stats.lastJudge}</span>}</div>{paused && <div className="pause-overlay"><div><Pause size={30} /><h2>PAUSED</h2><p>잠시 숨을 고르고 다시 시작하세요.</p><Button onClick={togglePause}><Play size={16} fill="currentColor" /> 계속하기</Button><Button variant="ghost" onClick={exitToLobby}>선곡 화면</Button></div></div>}</div><div className="live-bottom-bar"><span><Keyboard size={14} /> {difficulty === 'chaos' ? 'D · F · J · K' : 'F · J'} / TOUCH LANES</span><span>{songTime.toFixed(1)}s / {Math.round(song.duration)}s</span><span>PERFECT ±45ms</span></div></div>;
 

@@ -39,6 +39,9 @@ export function CharacterArt({ character, size = 150, glow = true }: { character
       <path d="M66 100 Q54 68 72 52 Q88 38 109 52 Q128 69 116 103 Q109 124 91 126 Q72 123 66 100Z" fill={`url(#${id}-skin)`} stroke={dark} strokeWidth="2.2" />
       <path d="M65 83 Q53 52 80 42 Q105 33 121 57 Q102 53 91 61 Q80 72 65 83Z" fill={dark} />
       <path d="M105 53 Q127 61 122 89 Q116 75 107 71Z" fill={secondary} />
+      <path d="M103 91 Q125 84 139 98 Q147 108 136 117 Q123 124 107 113 L100 106Z" fill={`url(#${id}-skin)`} stroke={dark} strokeWidth="2" />
+      <ellipse cx="131" cy="103" rx="2.5" ry="1.8" fill={dark} />
+      <path d="M118 116 l5 6 l5 -5" fill="#fff5e9" stroke={dark} strokeWidth="1" strokeLinejoin="round" />
       <ellipse cx="79" cy="88" rx="4.3" ry="5.5" fill="#302d46" />
       <ellipse cx="105" cy="88" rx="4.3" ry="5.5" fill="#302d46" />
       <circle cx="80.5" cy="86" r="1.5" fill="#fff" />

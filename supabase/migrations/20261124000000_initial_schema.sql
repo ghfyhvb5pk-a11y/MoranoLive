@@ -84,24 +84,18 @@ insert into public.card_catalog (id, rarity, character_id, name) values
   ('mora_4_spark',4,'mora','말풍선 폭죽!'),
   ('hwarok_4_core',4,'hwarok','심장 속 화산핵'),
   ('alpi_4_silence',4,'alpi','고요의 주파수'),
-  ('mailo_4_starlane',4,'mailo','별 사이의 항로'),
-  ('lumi_4_prism',4,'lumi','프리즘 스테이지'),
-  ('nono_3_formula',3,'nono','정답은 리듬 안에'),
-  ('raon_3_radio',3,'raon','새벽 라디오 산책'),
-  ('tia_3_solo',3,'tia','불꽃 여섯 줄'),
-  ('barak_3_low',3,'barak','둥, 하고 시작'),
-  ('musim_3_archive',3,'musim','조용한 컬렉션'),
-  ('sio_3_letter',3,'sio','접힌 편지의 온도'),
-  ('fern_3_garden',3,'fern','온실의 첫 새싹'),
-  ('reef_3_sample',2,'reef','골목 샘플러'),
-  ('kulu_2_cloud',2,'kulu','구름 아래 쉼표'),
-  ('loop_2_repeat',2,'loop','네 마디의 우연'),
+  ('mora_3_misdirection',3,'mora','말풍선 미아 사건'),
+  ('hwarok_3_heartbeat',3,'hwarok','화산 심박 카운트'),
+  ('alpi_3_moonrain',3,'alpi','달빛 아래 빗소리'),
   ('mora_2_sticker',2,'mora','스티커 대소동'),
   ('hwarok_2_drill',2,'hwarok','드럼은 정직해'),
-  ('alpi_1_rain',1,'alpi','창가의 빗방울'),
-  ('nono_1_keycap',1,'nono','키캡 수집가'),
-  ('lumi_1_light',1,'lumi','작은 프리즘')
+  ('alpi_1_rain',1,'alpi','창가의 빗방울')
 on conflict (id) do update set rarity = excluded.rarity, character_id = excluded.character_id, name = excluded.name;
+
+-- The current release intentionally has exactly three playable dinosaurs.
+delete from public.player_cards pc using public.card_catalog cc
+ where pc.card_id = cc.id and cc.character_id not in ('mora', 'hwarok', 'alpi');
+delete from public.card_catalog where character_id not in ('mora', 'hwarok', 'alpi');
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -122,7 +116,7 @@ begin
   insert into public.player_cards(user_id, card_id, quantity, level)
   values
     (new.id, 'mora_2_sticker', 1, 1),
-    (new.id, 'nono_1_keycap', 1, 1),
+    (new.id, 'hwarok_2_drill', 1, 1),
     (new.id, 'alpi_1_rain', 1, 1)
   on conflict (user_id, card_id) do nothing;
 
@@ -138,7 +132,7 @@ for each row execute procedure public.handle_new_user();
 insert into public.player_cards(user_id, card_id, quantity, level)
 select u.id, seed.card_id, 1, 1
   from auth.users u
- cross join (values ('mora_2_sticker'), ('nono_1_keycap'), ('alpi_1_rain')) as seed(card_id)
+ cross join (values ('mora_2_sticker'), ('hwarok_2_drill'), ('alpi_1_rain')) as seed(card_id)
 on conflict (user_id, card_id) do nothing;
 
 alter table public.profiles enable row level security;
@@ -195,7 +189,7 @@ begin
   if p_banner not in ('pickup', 'standard', 'event') then raise exception 'INVALID_BANNER'; end if;
 
   v_cost := case when p_count = 10 then 3000 else 300 end;
-  v_featured := case p_banner when 'pickup' then 'mora_4_spark' when 'event' then 'mailo_4_starlane' else null end;
+  v_featured := case p_banner when 'pickup' then 'mora_4_spark' when 'event' then 'alpi_4_silence' else null end;
 
   select gems, shards, pity, exchange_points
     into v_gems, v_shards, v_pity, v_points
@@ -239,7 +233,7 @@ begin
     else
       select id into v_card_id
         from public.card_catalog
-       where rarity = v_rarity
+       where rarity = v_rarity and character_id in ('mora', 'hwarok', 'alpi')
        order by gen_random_uuid()
        limit 1;
     end if;

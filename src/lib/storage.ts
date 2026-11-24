@@ -35,10 +35,10 @@ export function createInitialSave(): UserSave {
     exchangePoints: 0,
     ownedCards: [
       { cardId: 'mora_2_sticker', quantity: 1, level: 1 },
-      { cardId: 'nono_1_keycap', quantity: 1, level: 1 },
+      { cardId: 'hwarok_2_drill', quantity: 1, level: 1 },
       { cardId: 'alpi_1_rain', quantity: 1, level: 1 },
     ],
-    formation: ['mora_2_sticker', 'nono_1_keycap', 'alpi_1_rain'],
+    formation: ['mora_2_sticker', 'hwarok_2_drill', 'alpi_1_rain'],
     records: {},
     gachaHistory: [],
     claimedMissions: [],
@@ -69,6 +69,8 @@ export function loadSave(): UserSave {
     };
     // Keep old or externally edited saves from referencing removed catalog entries.
     merged.ownedCards = (merged.ownedCards || []).filter((item) => CARDS.some((card) => card.id === item.cardId));
+    // Older saves may contain only retired roster cards; grant the new three-dinosaur starter set.
+    if (merged.ownedCards.length === 0) merged.ownedCards = base.ownedCards.map((item) => ({ ...item }));
     const ownedIds = new Set(merged.ownedCards.map((item) => item.cardId));
     merged.formation = [...new Set((merged.formation || []).filter((id) => ownedIds.has(id)))].slice(0, 5);
     if (merged.formation.length === 0) merged.formation = merged.ownedCards.slice(0, 5).map((item) => item.cardId);

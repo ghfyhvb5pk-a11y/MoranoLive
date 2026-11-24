@@ -41,6 +41,7 @@ class AudioTransport {
   private scheduled: Set<AudioScheduledSourceNode> = new Set();
   private startAt = 0;
   private disposed = false;
+  private audioBuffers = new Map<string, AudioBuffer>();
 
   constructor(volume: number) {
     const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -55,12 +56,34 @@ class AudioTransport {
     return this.context.currentTime - this.startAt;
   }
 
+  private async loadTrack(src: string) {
+    const cached = this.audioBuffers.get(src);
+    if (cached) return cached;
+    const response = await fetch(src);
+    if (!response.ok) throw new Error(`음원 파일을 불러오지 못했습니다. (${response.status})`);
+    const bytes = await response.arrayBuffer();
+    const decoded = await this.context.decodeAudioData(bytes);
+    this.audioBuffers.set(src, decoded);
+    return decoded;
+  }
+
   async play(song: Song) {
+    // Resume immediately from the user's start gesture, then decode any uploaded MP3.
     await this.context.resume();
     this.stopScheduled();
+    const trackBuffer = song.audioSrc ? await this.loadTrack(song.audioSrc) : null;
     this.startAt = this.context.currentTime + 0.38;
-    // The chart uses a 1.4 s visual lead-in; put the soundtrack's beat-zero on that same clock.
-    this.scheduleMusic(song, this.startAt + 1.4);
+    if (trackBuffer) {
+      const source = this.context.createBufferSource();
+      source.buffer = trackBuffer;
+      source.connect(this.master);
+      this.track(source);
+      // audioLeadIn positions the first detected beat on the chart's 1.4 s beat-zero.
+      source.start(this.startAt + (song.audioLeadIn ?? 1.4));
+    } else {
+      // Procedural original demo tracks continue to use the Web Audio timeline.
+      this.scheduleMusic(song, this.startAt + 1.4);
+    }
   }
 
   private track(node: AudioScheduledSourceNode) {
@@ -231,7 +254,7 @@ export class RhythmSession {
     this.notes = chart.notes.map((note) => ({ ...note, started: false, done: false }));
     this.laneCount = chart.laneCount;
     this.lanePulseUntil = Array.from({ length: this.laneCount }, () => 0);
-    this.duration = chart.duration;
+    this.duration = song.audioSrc ? (song.audioLeadIn ?? 0) + song.duration : chart.duration;
     this.maxJudgements = chart.maxJudgements;
     this.transport = new AudioTransport(options.volume);
     this.stats = { score: 0, combo: 0, maxCombo: 0, accuracy: 100, life: 100, perfect: 0, great: 0, good: 0, bad: 0, miss: 0, judged: 0, total: this.maxJudgements, lastJudge: null };
@@ -472,7 +495,8 @@ export class RhythmSession {
       this.options.onUpdate({ ...this.stats }, time);
       this.lastUiUpdate = now;
     }
-    if (time > this.duration + 2.4 && this.notes.every((note) => note.done)) {
+    const finishGrace = this.song.audioSrc ? 0.3 : 2.4;
+    if (time > this.duration + finishGrace && this.notes.every((note) => note.done)) {
       this.finish(time);
       return;
     }

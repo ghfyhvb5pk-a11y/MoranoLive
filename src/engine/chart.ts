@@ -33,7 +33,7 @@ export function generateChart(song: Song, difficulty: DifficultyId): { notes: Ch
   const beat = 60 / song.bpm;
   const notes: ChartNote[] = [];
   let id = 0;
-  const beats = 96;
+  const beats = song.chartBeats ?? 96;
   const totalSteps = beats * config.subdivisions;
   let previousLane = Math.floor(random() * config.lanes);
 

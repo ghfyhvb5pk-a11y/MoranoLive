@@ -44,6 +44,12 @@ export interface Song {
   description: string;
   mood: string;
   seed: number;
+  /** Optional user-provided audio file, served from the Vite public directory. */
+  audioSrc?: string;
+  /** Seconds after the session clock starts before the audio file is scheduled. */
+  audioLeadIn?: number;
+  /** Number of beats used to generate a full-length chart for this song. */
+  chartBeats?: number;
 }
 
 export interface Album {
@@ -142,7 +148,7 @@ const songRows: Omit<Song, 'duration' | 'levels'>[] = [
   { id: 'fern_03', title: '새벽 네 시의 새싹', artist: '알빠노사우르스', bpm: 138, albumId: 'fernosa', genre: 'Melodic House', description: '작은 씨앗이 무대를 가득 채우는 순간을 담은 엔딩 곡.', mood: '희망차고 벅참', seed: 503 },
 ];
 
-export const SONGS: Song[] = songRows.map((song, index) => {
+const generatedSongs: Song[] = songRows.map((song, index) => {
   const levelsByIndex: Record<number, Record<DifficultyId, number>> = {
     0: { seed: 4, grow: 7, skilled: 12, rage: 16, transcend: 22, chaos: 26 },
     1: { seed: 5, grow: 8, skilled: 13, rage: 17, transcend: 23, chaos: 27 },
@@ -153,6 +159,28 @@ export const SONGS: Song[] = songRows.map((song, index) => {
   const duration = Math.round((96 * 60) / song.bpm + 4);
   return { ...song, duration, levels: { ...base, seed: Math.max(3, base.seed + (index % 2)), grow: base.grow + (index % 2), skilled: base.skilled + (index % 3), rage: base.rage + (index % 2), transcend: base.transcend + (index % 3), chaos: base.chaos + (index % 2) } };
 });
+
+// A user-created MP3 supplied for the MORANOSAURUS album. Tempo and beat phase
+// were estimated from the uploaded recording; the song has its own full-length chart.
+export const SONGS: Song[] = [
+  ...generatedSongs,
+  {
+    id: 'mora_user_01',
+    title: '뭐라노사우르스',
+    artist: '사용자 제작 오리지널',
+    bpm: 173,
+    duration: 197.72,
+    albumId: 'moranosa',
+    genre: 'Original MP3',
+    levels: { seed: 5, grow: 9, skilled: 16, rage: 22, transcend: 28, chaos: 31 },
+    description: '사용자가 직접 만든 오리지널 곡. 업로드한 MP3 원본을 사용하며 약 173 BPM 분석값에 맞춰 전 구간 채보를 생성합니다.',
+    mood: '자작곡 · 오리지널',
+    seed: 601,
+    audioSrc: './audio/moranosaurus.mp3',
+    audioLeadIn: 1.005,
+    chartBeats: 558,
+  },
+];
 
 export const CARDS: GameCard[] = [
   { id: 'mora_4_spark', characterId: 'mora', name: '말풍선 폭죽!', rarity: 4, skillName: '논점 폭발', skillDescription: '라이브 점수 보너스 +7%', skillValue: 7, skillKind: 'score', story: '첫 대형 무대에서 뭐라노사우르스는 대사를 잊는다. 개빡치노사우르스와 알빠노사우르스의 눈빛을 보고, 즉흥으로 만든 한 줄이 관객의 합창이 된다.', art: 'gold-confetti' },

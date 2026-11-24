@@ -35,13 +35,13 @@ const difficultyConfig: Record<DifficultyId, DifficultyConfig> = {
  * flick, or second long note can be generated inside that same-lane interval.
  * Long notes stay in one lane for their entire duration.
  */
-export function generateChart(song: Song, difficulty: DifficultyId, startTime = song.audioSrc ? (song.audioLeadIn ?? 0) : 1.4): { notes: ChartNote[]; laneCount: number; duration: number; maxJudgements: number } {
+export function generateChart(song: Song, difficulty: DifficultyId, startTime = song.audioSrc ? (song.audioLeadIn ?? 0) : 1.4, bpm = song.bpm, beatCount = song.chartBeats): { notes: ChartNote[]; laneCount: number; duration: number; maxJudgements: number } {
   const config = difficultyConfig[difficulty];
-  const beat = 60 / song.bpm;
+  const beat = 60 / bpm;
   const notes: ChartNote[] = [];
   const laneBusyUntil = Array.from({ length: config.lanes }, () => 0);
   let id = 0;
-  const beats = song.chartBeats ?? 96;
+  const beats = beatCount ?? 96;
   const bars = Math.floor(beats / 4);
   const stepsPerBar = config.subdivisions * 4;
   const songPhase = song.seed % config.lanes;

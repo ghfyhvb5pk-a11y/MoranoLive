@@ -46,7 +46,7 @@ export interface Song {
   seed: number;
   /** Optional user-provided audio file, served from the Vite public directory. */
   audioSrc?: string;
-  /** Seconds after the session clock starts before the audio file is scheduled. */
+  /** Seconds from the MP3 start to its first musical beat. */
   audioLeadIn?: number;
   /** Number of beats used to generate a full-length chart for this song. */
   chartBeats?: number;
